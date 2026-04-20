@@ -1,0 +1,5 @@
+outlet,domain,bias_label,bias_score
+Left News,leftnews.com,Left,-2
+Center Daily,centerdaily.com,Center,0
+Right Report,rightreport.com,Right,2
+Neutral Wire,neutralwire.org,Lean Left,-1
