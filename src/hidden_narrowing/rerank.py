@@ -29,12 +29,17 @@ def greedy_breadth_rerank(candidates_rows: list[dict], top_k: int = 10, lambda_b
 
             diversity_gain = abs(ideo - cur_mean) if ideo is not None else 0.0
             cross_cut = _cross_gain(user_ideology, ideo)
-            source_novelty = 0.5 if dom and dom not in selected_domains else 0.0
+            source_novelty = 1.0 if dom and dom not in selected_domains else 0.0
             new_mean = _mean(selected_ideos + ([ideo] if ideo is not None else []))
             concentration_penalty = max(0.0, abs(new_mean) - abs(cur_mean))
 
-            breadth = diversity_gain + cross_cut + source_novelty - concentration_penalty
-            final_score = rel + lambda_breadth * breadth
+            breadth_term = (
+                0.35 * diversity_gain
+                + 0.35 * cross_cut
+                + 0.10 * source_novelty
+                - 0.20 * concentration_penalty
+            )
+            final_score = rel + lambda_breadth * breadth_term
             if final_score > best_final:
                 best_i, best_final = i, final_score
 
