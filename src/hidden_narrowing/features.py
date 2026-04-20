@@ -1,0 +1,52 @@
+from __future__ import annotations
+
+import math
+from collections import Counter, defaultdict
+
+
+def _tokenize(text: str) -> list[str]:
+    return [t.strip(".,!?;:\"'()[]{}").lower() for t in text.split() if t.strip()]
+
+
+def combine_text(news_rows: list[dict]) -> list[str]:
+    return [f"{r.get('Title', '')} {r.get('Abstract', '')}".strip() for r in news_rows]
+
+
+def build_tfidf_features(news_rows: list[dict]) -> tuple[dict, dict[str, dict[str, float]]]:
+    docs = combine_text(news_rows)
+    tokenized = [_tokenize(d) for d in docs]
+    df = Counter()
+    for toks in tokenized:
+        df.update(set(toks))
+
+    n_docs = max(1, len(docs))
+    idf = {term: math.log((1 + n_docs) / (1 + freq)) + 1.0 for term, freq in df.items()}
+
+    vectors: dict[str, dict[str, float]] = {}
+    for row, toks in zip(news_rows, tokenized):
+        tf = Counter(toks)
+        norm = sum(tf.values()) or 1
+        vec = {term: (count / norm) * idf[term] for term, count in tf.items()}
+        vectors[row["NewsID"]] = vec
+    return {"idf": idf}, vectors
+
+
+def build_user_vectors(histories_rows: list[dict], article_vectors: dict[str, dict[str, float]]) -> dict[str, dict[str, float]]:
+    user_terms: dict[str, list[dict[str, float]]] = defaultdict(list)
+    for h in histories_rows:
+        vec = article_vectors.get(h["NewsID"])
+        if vec:
+            user_terms[h["UserID"]].append(vec)
+
+    out: dict[str, dict[str, float]] = {}
+    for uid, vecs in user_terms.items():
+        acc = Counter()
+        for v in vecs:
+            acc.update(v)
+        denom = len(vecs)
+        out[uid] = {k: v / denom for k, v in acc.items()}
+    return out
+
+
+def build_sentence_transformer_features(*args, **kwargs):
+    raise NotImplementedError("Sentence-transformer features are not implemented in this scaffold.")
