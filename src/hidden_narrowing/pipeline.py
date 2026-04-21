@@ -5,7 +5,8 @@ import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from . import baseline, data_mind, features, ideology, metrics, rerank
+from . import baseline, data_mind, features, metrics, rerank
+from .data_mind import PUBLIC_AFFAIRS_SUBCATEGORIES
 
 
 def _write_csv(path: Path, rows: list[dict]) -> None:
@@ -52,7 +53,6 @@ def run_experiment(
     train_behaviors_path: Path,
     dev_news_path: Path,
     dev_behaviors_path: Path,
-    allsides_path: Path,
     results_dir: Path,
     reports_dir: Path,
     top_k: int = 10,
@@ -64,11 +64,13 @@ def run_experiment(
     max_train_impressions: int | None = None,
     max_dev_impressions: int | None = None,
     max_users: int | None = None,
+    slice_name: str = "public_affairs",
+    include_newscrime: bool = False,
 ) -> tuple[list[dict], list[dict]]:
     lambda_values = lambda_values or [0.15, 0.35, 0.60]
 
-    train = data_mind.parse_mind(str(train_news_path), str(train_behaviors_path))
-    dev = data_mind.parse_mind(str(dev_news_path), str(dev_behaviors_path))
+    train = data_mind.parse_mind(str(train_news_path), str(train_behaviors_path), slice_name=slice_name, include_newscrime=include_newscrime)
+    dev = data_mind.parse_mind(str(dev_news_path), str(dev_behaviors_path), slice_name=slice_name, include_newscrime=include_newscrime)
 
     if max_users is not None and max_users > 0:
         keep_users = {r["UserID"] for r in train.behaviors[:max_users] if r.get("UserID")}
@@ -84,26 +86,7 @@ def run_experiment(
     if max_dev_impressions is not None and max_dev_impressions > 0:
         dev.impressions = dev.impressions[:max_dev_impressions]
 
-    allsides_rows = ideology.load_allsides(str(allsides_path))
-    train_news_rows, mapping_report_train = ideology.attach_ideology(train.news, allsides_rows)
-    dev_news_rows, mapping_report_dev = ideology.attach_ideology(dev.news, allsides_rows)
-
-    # Domain coverage outputs for evaluation corpus
-    coverage_rows = [
-        {
-            "dataset": dataset_label,
-            "total_articles": mapping_report_dev.total_articles,
-            "mapped_articles": mapping_report_dev.mapped_articles,
-            "unmapped_articles": mapping_report_dev.unmapped_articles,
-            "mapping_coverage_percentage": round(mapping_report_dev.coverage * 100.0, 2),
-            "top_unmapped_domains": "; ".join(f"{x['domain']}:{x['count']}" for x in mapping_report_dev.top_unmapped_domains[:10]),
-        }
-    ]
-    _write_csv(results_dir / "domain_coverage.csv", coverage_rows)
-    _write_csv(results_dir / "unmapped_domains.csv", mapping_report_dev.top_unmapped_domains)
-
-    # Fit representations on train news, infer on combined ids fallback for sample
-    merged_news = {n["NewsID"]: n for n in (train_news_rows + dev_news_rows)}
+    merged_news = {n["NewsID"]: n for n in (train.news + dev.news)}
     _, article_vectors, used_embedding_method = _resolve_embedding(list(merged_news.values()), method=embedding_method)
     news_by_id = merged_news
 
@@ -123,24 +106,26 @@ def run_experiment(
         imps_by_id[imp["ImpressionID"]].append(imp)
 
     metric_names = [
-        "ndcg@10",
+        "ndcg_10",
         "mrr",
-        "hit@10",
-        "average_ideology",
-        "ideological_concentration",
-        "intra_list_diversity",
-        "cross_cutting_exposure_rate",
-        "source_coverage",
+        "hit_10",
+        "topical_concentration",
+        "subcategory_coverage",
+        "topical_entropy",
+        "semantic_diversity",
+        "cross_topic_rate",
+        "history_congruent_share",
     ]
 
     static_rows: list[dict] = []
-    topk_ideology_values: list[float | None] = []
     for imp_id, group in imps_by_id.items():
         user_id = group[0]["UserID"]
         user_hist = histories_by_user_train.get(user_id, [])
         if not user_hist:
             continue
-        user_ideo = metrics.average_ideology([news_by_id.get(nid, {}).get("ideology_score") for nid in user_hist])
+
+        profile = features.build_user_subcategory_profile(user_hist, news_by_id, PUBLIC_AFFAIRS_SUBCATEGORIES | ({"newscrime"} if include_newscrime else set()))
+        user_dominant_subcategory = profile["dominant_subcategory"]
 
         candidate_ids = [g["NewsID"] for g in group]
         rel_scores = baseline.score_candidates(
@@ -158,35 +143,40 @@ def run_experiment(
             row_news = news_by_id.get(g["NewsID"], {})
             item = dict(g)
             item["relevance_score"] = float(score)
-            item["domain"] = row_news.get("domain")
-            item["ideology_score"] = row_news.get("ideology_score")
+            item["SubCategory"] = row_news.get("SubCategory", "").strip().lower()
             candidates.append(item)
 
         baseline_ranked = baseline.rank_candidates(candidates, score_field="relevance_score")[:top_k]
-        breadth_ranked = rerank.greedy_breadth_rerank(candidates, top_k=top_k, lambda_breadth=lambda_breadth, user_ideology=user_ideo)
+        breadth_ranked = rerank.greedy_breadth_rerank(
+            candidates,
+            article_vectors=article_vectors,
+            top_k=top_k,
+            lambda_breadth=lambda_breadth,
+            user_dominant_subcategory=user_dominant_subcategory,
+        )
 
         for condition, frame, score_col in [
             ("baseline", baseline_ranked, "relevance_score"),
-            ("breadth_aware_lambda_0.35", breadth_ranked, "final_score"),
+            ("breadth_aware", breadth_ranked, "final_score"),
         ]:
             labels = [int(r["clicked"]) for r in frame]
             scores = [float(r.get(score_col, 0.0)) for r in frame]
-            ideos = [r.get("ideology_score") for r in frame]
-            domains = [r.get("domain") for r in frame]
-            topk_ideology_values.extend(ideos)
+            subcats = [r.get("SubCategory", "") for r in frame]
+            ids = [r.get("NewsID", "") for r in frame]
             static_rows.append(
                 {
                     "ImpressionID": imp_id,
                     "UserID": user_id,
                     "condition": condition,
-                    "ndcg@10": metrics.ndcg_at_k(labels, scores, top_k),
+                    "ndcg_10": metrics.ndcg_at_k(labels, scores, top_k),
                     "mrr": metrics.mrr(labels, scores),
-                    "hit@10": metrics.hit_at_k(labels, scores, top_k),
-                    "average_ideology": metrics.average_ideology(ideos),
-                    "ideological_concentration": metrics.ideological_concentration(ideos),
-                    "intra_list_diversity": metrics.intra_list_diversity(ideos),
-                    "cross_cutting_exposure_rate": metrics.cross_cutting_exposure_rate(ideos, user_ideo),
-                    "source_coverage": metrics.source_coverage(domains),
+                    "hit_10": metrics.hit_at_k(labels, scores, top_k),
+                    "topical_concentration": metrics.topical_concentration(subcats),
+                    "subcategory_coverage": metrics.subcategory_coverage(subcats),
+                    "topical_entropy": metrics.topical_entropy(subcats, support_size=len(PUBLIC_AFFAIRS_SUBCATEGORIES)),
+                    "semantic_diversity": metrics.semantic_diversity(ids, article_vectors),
+                    "cross_topic_rate": metrics.cross_topic_rate(subcats, user_dominant_subcategory),
+                    "history_congruent_share": metrics.history_congruent_share(subcats, user_dominant_subcategory),
                 }
             )
 
@@ -220,31 +210,6 @@ def run_experiment(
     _write_csv(results_dir / "static_metrics_summary.csv", summary_rows)
 
     reports_dir.mkdir(parents=True, exist_ok=True)
-    warning_lines: list[str] = []
-    if mapping_report_dev.coverage < 0.20:
-        warning_lines.append(
-            f"Ideology mapping coverage is low ({mapping_report_dev.coverage:.2%}); estimates may be unstable."
-        )
-    if dataset_label != "sample":
-        valid_impressions = len({r["ImpressionID"] for r in static_rows})
-        if valid_impressions < 100:
-            warning_lines.append(
-                f"Only {valid_impressions} valid evaluation impressions were scored; results may be underpowered."
-            )
-    cc_values = [float(r["cross_cutting_exposure_rate"]) for r in static_rows if r.get("cross_cutting_exposure_rate") is not None]
-    if cc_values and sum(1 for x in cc_values if x > 0.0) < 10:
-        warning_lines.append(
-            "Cross-cutting exposure could be computed for very few users/impressions."
-        )
-    if topk_ideology_values:
-        unmapped_ratio = sum(1 for x in topk_ideology_values if x is None) / len(topk_ideology_values)
-    else:
-        unmapped_ratio = 1.0
-    if unmapped_ratio > 0.80:
-        warning_lines.append(
-            f"Top-k lists contain many unmapped ideology values ({unmapped_ratio:.1%} unmapped)."
-        )
-
     report_lines = [
         "# Results Summary",
         "",
@@ -256,34 +221,27 @@ def run_experiment(
             else "These outputs are generated from MIND-style evaluation data and may be used for analysis subject to the stated limitations."
         ),
         "",
+        "## Operationalization",
+        "- This experiment uses topical-semantic breadth within political/public-affairs news exposure.",
+        "- Source-level ideology labels were not used in the main MIND-based experiment because MIND URL fields did not expose original publisher domains in usable form.",
+        "- Synthetic/sample results remain validation-only.",
+        f"- Real-data analysis uses slice: `{slice_name}`{', with newscrime robustness' if include_newscrime else ''}.",
+        "",
         "## Methodology",
         f"- Baseline model: {model.mode} (LogisticRegression(max_iter=1000, class_weight='balanced') with cosine fallback).",
         f"- Embedding method requested: {embedding_method}; used: {used_embedding_method}.",
         "- Breadth-aware reranking: final_score = relevance_score + lambda_breadth * breadth_term.",
-        "- breadth_term = 0.35*diversity_gain + 0.35*cross_cutting_gain + 0.10*source_novelty - 0.20*concentration_penalty.",
-        f"- lambda sensitivity tested: {', '.join(str(x) for x in lambda_values)} (main comparison uses 0.35).",
+        "- breadth_term = 0.35*semantic_diversity_gain + 0.35*cross_topic_gain + 0.15*subcategory_novelty - 0.15*topical_concentration_penalty.",
+        f"- lambda sensitivity tested: {', '.join(str(x) for x in lambda_values)} (main comparison baseline vs breadth_aware).",
         "",
         "## Evaluation Setup",
-        f"- Number of articles (dev): {len(dev_news_rows)}",
+        f"- Number of articles (dev): {len(dev.news)}",
         f"- Number of users (dev impressions): {len(set(r['UserID'] for r in dev.impressions))}",
         f"- Number of impressions (dev candidate rows): {len(dev.impressions)}",
-        f"- Ideology mapping coverage: {mapping_report_dev.coverage:.2%}",
         "",
         "## Static Evaluation (summary)",
         _markdown_table(summary_rows, ["metric", "condition", "mean", "std", "bootstrap_ci_low", "bootstrap_ci_high", "n"]),
-        "",
-        "## Discussion",
-        "- Compare concentration/diversity/cross-cutting/source coverage between baseline and breadth-aware rows above.",
-        "- Utility tradeoff should be read from NDCG@10/MRR summary lines.",
-        "- See simulation section below for repeated-round dynamics.",
-        "",
-        "## Limitations",
-        "- Ideology scores depend on outlet-domain mapping coverage.",
-        "- Sentence-transformer mode is optional and environment-dependent.",
-        "- Offline click simulation may not reflect live user adaptation.",
     ]
-    if warning_lines:
-        report_lines += ["", "## Warnings"] + [f"- {w}" for w in warning_lines]
-    (reports_dir / "results_summary.md").write_text("\n".join(report_lines), encoding="utf-8")
 
+    (reports_dir / "results_summary.md").write_text("\n".join(report_lines), encoding="utf-8")
     return static_rows, summary_rows

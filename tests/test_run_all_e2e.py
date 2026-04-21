@@ -16,6 +16,6 @@ def test_run_all_sample_end_to_end():
         "utility_tradeoff.png",
         "simulation_concentration_over_rounds.png",
         "simulation_diversity_over_rounds.png",
-        "source_coverage_comparison.png",
+        "subcategory_coverage_comparison.png",
     ]:
         assert (root / "figures" / name).exists()
