@@ -1,0 +1,4 @@
+outlet,domain,bias_label,bias_score
+Example News,example.com,Center,0
+Example Left Outlet,left.example,Left,-1
+Example Right Outlet,right.example,Right,1

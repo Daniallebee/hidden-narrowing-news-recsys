@@ -18,6 +18,7 @@ env/
 # Data (do not commit raw MIND or large artifacts)
 data/raw/*
 !data/raw/.gitkeep
+data/external/allsides_media_bias.csv
 
 # Generated artifacts
 results/*

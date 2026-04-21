@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from hidden_narrowing.config import FIGURES_DIR, FIXTURES_DIR, REPORTS_DIR, RESULTS_DIR
+from hidden_narrowing.config import DATA_DIR, FIGURES_DIR, FIXTURES_DIR, REPORTS_DIR, RESULTS_DIR
 from hidden_narrowing.pipeline import run_experiment
 
 
@@ -82,11 +82,14 @@ def main() -> None:
     parser.add_argument("--sample", action="store_true")
     parser.add_argument("--mind-train-dir", type=Path)
     parser.add_argument("--mind-dev-dir", type=Path)
-    parser.add_argument("--allsides-path", type=Path, default=FIXTURES_DIR / "allsides_media_bias.csv")
+    parser.add_argument("--allsides-path", type=Path, default=DATA_DIR / "external" / "allsides_media_bias.csv")
     parser.add_argument("--embedding-method", choices=["tfidf", "sentence-transformer"], default="tfidf")
     parser.add_argument("--bootstrap-samples", type=int, default=1000)
     parser.add_argument("--lambda-breadth", type=float, default=0.35)
     parser.add_argument("--lambda-values", type=float, nargs="*", default=[0.15, 0.35, 0.60])
+    parser.add_argument("--max-train-impressions", type=int)
+    parser.add_argument("--max-dev-impressions", type=int)
+    parser.add_argument("--max-users", type=int)
     args = parser.parse_args()
 
     if args.sample:
@@ -95,12 +98,19 @@ def main() -> None:
         dev_news = train_news
         dev_behaviors = train_behaviors
         dataset_label = "sample"
+        if not args.allsides_path.exists():
+            args.allsides_path = FIXTURES_DIR / "allsides_media_bias.csv"
     else:
         if not args.mind_train_dir or not args.mind_dev_dir:
             parser.error("Use --sample, or provide --mind-train-dir and --mind-dev-dir.")
         train_news, train_behaviors = _validate_mind_dir(args.mind_train_dir)
         dev_news, dev_behaviors = _validate_mind_dir(args.mind_dev_dir)
         dataset_label = "MINDsmall"
+        if not args.allsides_path.exists():
+            raise FileNotFoundError(
+                f"AllSides mapping file not found: {args.allsides_path}. "
+                "Create data/external/allsides_media_bias.csv from the provided template."
+            )
 
     run_experiment(
         train_news_path=train_news,
@@ -115,6 +125,9 @@ def main() -> None:
         bootstrap_samples=args.bootstrap_samples,
         lambda_values=args.lambda_values,
         dataset_label=dataset_label,
+        max_train_impressions=args.max_train_impressions,
+        max_dev_impressions=args.max_dev_impressions,
+        max_users=args.max_users,
     )
 
     sim_cmd = [sys.executable, str(ROOT / "scripts" / "run_simulation.py")]
