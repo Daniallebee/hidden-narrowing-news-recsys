@@ -28,7 +28,7 @@ def build_tfidf_features(news_rows: list[dict]) -> tuple[dict, dict[str, dict[st
         norm = sum(tf.values()) or 1
         vec = {term: (count / norm) * idf[term] for term, count in tf.items()}
         vectors[row["NewsID"]] = vec
-    return {"idf": idf}, vectors
+    return {"method": "tfidf", "idf": idf}, vectors
 
 
 def build_user_vectors(histories_rows: list[dict], article_vectors: dict[str, dict[str, float]]) -> dict[str, dict[str, float]]:
@@ -48,5 +48,19 @@ def build_user_vectors(histories_rows: list[dict], article_vectors: dict[str, di
     return out
 
 
-def build_sentence_transformer_features(*args, **kwargs):
-    raise NotImplementedError("Sentence-transformer features are not implemented in this scaffold.")
+def build_sentence_transformer_features(news_rows: list[dict], model_name: str = "all-MiniLM-L6-v2") -> tuple[dict, dict[str, dict[str, float]]]:
+    docs = combine_text(news_rows)
+    try:
+        from sentence_transformers import SentenceTransformer
+
+        encoder = SentenceTransformer(model_name)
+        embs = encoder.encode(docs, convert_to_numpy=True)
+        vectors: dict[str, dict[str, float]] = {}
+        for row, emb in zip(news_rows, embs):
+            vectors[row["NewsID"]] = {f"d{i}": float(v) for i, v in enumerate(emb.tolist())}
+        return {"method": "sentence-transformer", "model_name": model_name}, vectors
+    except Exception as exc:
+        raise RuntimeError(
+            "Sentence-transformer embedding requested but unavailable. "
+            "Install sentence-transformers and model weights or use --embedding-method tfidf."
+        ) from exc

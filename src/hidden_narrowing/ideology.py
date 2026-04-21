@@ -16,6 +16,7 @@ BIAS_TO_SCORE = {
 class IdeologyMappingReport:
     total_articles: int
     mapped_articles: int
+    unmapped_articles: int
     coverage: float
     top_unmapped_domains: list[dict]
 
@@ -53,6 +54,7 @@ def attach_ideology(news_rows: list[dict], allsides_rows: list[dict]) -> tuple[l
 
     total = len(merged)
     mapped = sum(1 for r in merged if r.get("ideology_score") is not None)
+    unmapped = total - mapped
     coverage = mapped / total if total else 0.0
 
     counts: dict[str, int] = {}
@@ -60,6 +62,6 @@ def attach_ideology(news_rows: list[dict], allsides_rows: list[dict]) -> tuple[l
         if r.get("ideology_score") is None:
             d = r.get("domain") or "<missing>"
             counts[d] = counts.get(d, 0) + 1
-    top_unmapped = [{"domain": k, "count": v} for k, v in sorted(counts.items(), key=lambda x: x[1], reverse=True)[:10]]
+    top_unmapped = [{"domain": k, "count": v} for k, v in sorted(counts.items(), key=lambda x: x[1], reverse=True)]
 
-    return merged, IdeologyMappingReport(total, mapped, coverage, top_unmapped)
+    return merged, IdeologyMappingReport(total, mapped, unmapped, coverage, top_unmapped)
