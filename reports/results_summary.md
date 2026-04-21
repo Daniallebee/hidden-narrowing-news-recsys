@@ -4,63 +4,48 @@ Dataset: **sample**
 
 These outputs validate the pipeline only and should not be interpreted as research findings.
 
+## Operationalization
+- This experiment uses topical-semantic breadth within political/public-affairs news exposure.
+- Source-level ideology labels were not used in the main MIND-based experiment because MIND URL fields did not expose original publisher domains in usable form.
+- Synthetic/sample results remain validation-only.
+- Real-data analysis uses slice: `all`.
+
 ## Methodology
 - Baseline model: cosine (LogisticRegression(max_iter=1000, class_weight='balanced') with cosine fallback).
 - Embedding method requested: tfidf; used: tfidf.
 - Breadth-aware reranking: final_score = relevance_score + lambda_breadth * breadth_term.
-- breadth_term = 0.35*diversity_gain + 0.35*cross_cutting_gain + 0.10*source_novelty - 0.20*concentration_penalty.
-- lambda sensitivity tested: 0.15, 0.35, 0.6 (main comparison uses 0.35).
+- breadth_term = 0.35*semantic_diversity_gain + 0.35*cross_topic_gain + 0.15*subcategory_novelty - 0.15*topical_concentration_penalty.
+- lambda sensitivity tested: 0.15, 0.35, 0.6 (main comparison baseline vs breadth_aware).
 
 ## Evaluation Setup
 - Number of articles (dev): 8
 - Number of users (dev impressions): 3
 - Number of impressions (dev candidate rows): 12
-- Ideology mapping coverage: 87.50%
 
 ## Static Evaluation (summary)
 | metric | condition | mean | std | bootstrap_ci_low | bootstrap_ci_high | n |
 | --- | --- | --- | --- | --- | --- | --- |
-| ndcg@10 | baseline | 0.7103099178571526 | 0.2117009020001536 | 0.5 | 1.0 | 3 |
-| ndcg@10 | breadth_aware_lambda_0.35 | 0.8333333333333334 | 0.23570226039551584 | 0.5 | 1.0 | 3 |
+| ndcg_10 | baseline | 0.7103099178571526 | 0.2117009020001536 | 0.5 | 1.0 | 3 |
+| ndcg_10 | breadth_aware | 0.5205354372149502 | 0.08303257879894044 | 0.43067655807339306 | 0.6309297535714575 | 3 |
 | mrr | baseline | 0.611111111111111 | 0.28327886186626583 | 0.3333333333333333 | 1.0 | 3 |
-| mrr | breadth_aware_lambda_0.35 | 0.7777777777777777 | 0.3142696805273545 | 0.3333333333333333 | 1.0 | 3 |
-| hit@10 | baseline | 1.0 | 0.0 | 1.0 | 1.0 | 3 |
-| hit@10 | breadth_aware_lambda_0.35 | 1.0 | 0.0 | 1.0 | 1.0 | 3 |
-| average_ideology | baseline | -0.05555555555555556 | 0.41154256638969594 | -0.625 | 0.3333333333333333 | 3 |
-| average_ideology | breadth_aware_lambda_0.35 | -0.05555555555555556 | 0.41154256638969594 | -0.625 | 0.3333333333333333 | 3 |
-| ideological_concentration | baseline | 0.3611111111111111 | 0.20506698694768613 | 0.125 | 0.5277777777777778 | 3 |
-| ideological_concentration | breadth_aware_lambda_0.35 | 0.3611111111111111 | 0.20506698694768613 | 0.125 | 0.5277777777777778 | 3 |
-| intra_list_diversity | baseline | 0.888888888888889 | 0.3215510250775062 | 0.5833333333333334 | 1.3333333333333333 | 3 |
-| intra_list_diversity | breadth_aware_lambda_0.35 | 0.888888888888889 | 0.3215510250775062 | 0.5833333333333334 | 1.3333333333333333 | 3 |
-| cross_cutting_exposure_rate | baseline | 0.3333333333333333 | 0.31180478223116176 | 0.0 | 0.5833333333333334 | 3 |
-| cross_cutting_exposure_rate | breadth_aware_lambda_0.35 | 0.3333333333333333 | 0.31180478223116176 | 0.0 | 0.5833333333333334 | 3 |
-| source_coverage | baseline | 0.75 | 0.0 | 0.75 | 0.75 | 3 |
-| source_coverage | breadth_aware_lambda_0.35 | 0.75 | 0.0 | 0.75 | 0.75 | 3 |
-
-## Discussion
-- Compare concentration/diversity/cross-cutting/source coverage between baseline and breadth-aware rows above.
-- Utility tradeoff should be read from NDCG@10/MRR summary lines.
-- See simulation section below for repeated-round dynamics.
-
-## Limitations
-- Ideology scores depend on outlet-domain mapping coverage.
-- Sentence-transformer mode is optional and environment-dependent.
-- Offline click simulation may not reflect live user adaptation.
-
-## Warnings
-- Cross-cutting exposure could be computed for very few users/impressions.
+| mrr | breadth_aware | 0.3611111111111111 | 0.10393492741038726 | 0.25 | 0.5 | 3 |
+| hit_10 | baseline | 1.0 | 0.0 | 1.0 | 1.0 | 3 |
+| hit_10 | breadth_aware | 1.0 | 0.0 | 1.0 | 1.0 | 3 |
+| topical_concentration | baseline | 0.25 | 0.0 | 0.25 | 0.25 | 3 |
+| topical_concentration | breadth_aware | 0.25 | 0.0 | 0.25 | 0.25 | 3 |
+| subcategory_coverage | baseline | 4.0 | 0.0 | 4.0 | 4.0 | 3 |
+| subcategory_coverage | breadth_aware | 4.0 | 0.0 | 4.0 | 4.0 | 3 |
+| topical_entropy | baseline | 1.0 | 0.0 | 1.0 | 1.0 | 3 |
+| topical_entropy | breadth_aware | 1.0 | 0.0 | 1.0 | 1.0 | 3 |
+| semantic_diversity | baseline | 0.9772254131687231 | 0.018755695274956647 | 0.9540630272324707 | 0.9925377374245663 | 3 |
+| semantic_diversity | breadth_aware | 0.9772254131687231 | 0.018755695274956647 | 0.9540630272324707 | 0.9925377374245663 | 3 |
+| cross_topic_rate | baseline | 0.0 | 0.0 | 0.0 | 0.0 | 3 |
+| cross_topic_rate | breadth_aware | 0.0 | 0.0 | 0.0 | 0.0 | 3 |
+| history_congruent_share | baseline | 0.0 | 0.0 | 0.0 | 0.0 | 3 |
+| history_congruent_share | breadth_aware | 0.0 | 0.0 | 0.0 | 0.0 | 3 |
 ## Simulation Summary
 
-| condition | concentration_mean | diversity_mean | cross_cutting_rate_mean | source_coverage_mean |
+| condition | topical_concentration_mean | semantic_diversity_mean | cross_topic_rate_mean | subcategory_coverage_mean |
 | --- | --- | --- | --- | --- |
-| baseline | 0.0714 | 1.0000 | 0.3524 | 0.6250 |
-| breadth_aware | 0.0714 | 1.0000 | 0.2190 | 0.6250 |
-
-### Interpretation
-- Concentration decreased under breadth-aware: no.
-- Diversity increased under breadth-aware: no.
-- Cross-cutting exposure increased under breadth-aware: no.
-- Source coverage increased under breadth-aware: no.
-- NDCG@10 declined under breadth-aware: no.
-- MRR declined under breadth-aware: no.
-- Repeated rounds show stronger narrowing under baseline: no.
+| baseline | 0.1250 | 0.9755 | 0.0000 | 8.0000 |
+| breadth_aware | 0.1250 | 0.9755 | 0.0000 | 8.0000 |

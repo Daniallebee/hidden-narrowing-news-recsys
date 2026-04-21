@@ -6,7 +6,8 @@ import random
 from collections import Counter
 from pathlib import Path
 
-from . import baseline, metrics, rerank
+from . import baseline, features, metrics, rerank
+from .data_mind import PUBLIC_AFFAIRS_SUBCATEGORIES
 
 
 def _write_csv(path: Path, rows: list[dict]) -> None:
@@ -64,7 +65,9 @@ def run_repeated_rounds(
         for condition in ["baseline", "breadth_aware"]:
             hist = list(init_hist)
             for rd in range(1, rounds + 1):
-                user_ideo = metrics.average_ideology([news_by_id.get(nid, {}).get("ideology_score") for nid in hist])
+                profile = features.build_user_subcategory_profile(hist, news_by_id, PUBLIC_AFFAIRS_SUBCATEGORIES)
+                user_dom = profile["dominant_subcategory"]
+
                 rel_scores = baseline.score_candidates(
                     model=model,
                     user_id=user_id,
@@ -81,23 +84,27 @@ def run_repeated_rounds(
                         {
                             "NewsID": nid,
                             "relevance_score": float(s),
-                            "ideology_score": n.get("ideology_score"),
-                            "domain": n.get("domain"),
+                            "SubCategory": n.get("SubCategory", "").strip().lower(),
                         }
                     )
 
                 if condition == "baseline":
                     ranked = baseline.rank_candidates(candidates)[:top_k]
                 else:
-                    ranked = rerank.greedy_breadth_rerank(candidates, top_k=top_k, lambda_breadth=lambda_breadth, user_ideology=user_ideo)
+                    ranked = rerank.greedy_breadth_rerank(
+                        candidates,
+                        article_vectors=article_vectors,
+                        top_k=top_k,
+                        lambda_breadth=lambda_breadth,
+                        user_dominant_subcategory=user_dom,
+                    )
 
-                ideos = [r.get("ideology_score") for r in ranked]
-                domains = [r.get("domain") for r in ranked]
+                rec_ids = [r["NewsID"] for r in ranked]
+                rec_subcats = [r.get("SubCategory", "") for r in ranked]
 
                 click_scores = [float(r["relevance_score"]) for r in ranked]
-                click_ids = [r["NewsID"] for r in ranked]
-                clicked_news_id = _softmax_sample(click_ids, click_scores, temperature, rng)
-                clicked_ideology = news_by_id.get(clicked_news_id, {}).get("ideology_score")
+                clicked_news_id = _softmax_sample(rec_ids, click_scores, temperature, rng)
+                clicked_subcategory = news_by_id.get(clicked_news_id, {}).get("SubCategory", "").strip().lower()
                 hist.append(clicked_news_id)
 
                 rows.append(
@@ -105,13 +112,14 @@ def run_repeated_rounds(
                         "user_id": user_id,
                         "round": rd,
                         "condition": condition,
-                        "avg_ideology": metrics.average_ideology(ideos),
-                        "concentration": metrics.ideological_concentration(ideos),
-                        "diversity": metrics.intra_list_diversity(ideos),
-                        "cross_cutting_rate": metrics.cross_cutting_exposure_rate(ideos, user_ideo),
-                        "source_coverage": metrics.source_coverage(domains),
+                        "topical_concentration": metrics.topical_concentration(rec_subcats),
+                        "subcategory_coverage": metrics.subcategory_coverage(rec_subcats),
+                        "topical_entropy": metrics.topical_entropy(rec_subcats, support_size=len(PUBLIC_AFFAIRS_SUBCATEGORIES)),
+                        "semantic_diversity": metrics.semantic_diversity(rec_ids, article_vectors),
+                        "cross_topic_rate": metrics.cross_topic_rate(rec_subcats, user_dom),
+                        "history_congruent_share": metrics.history_congruent_share(rec_subcats, user_dom),
                         "clicked_news_id": clicked_news_id,
-                        "clicked_ideology": clicked_ideology if clicked_ideology is not None else "",
+                        "clicked_subcategory": clicked_subcategory,
                     }
                 )
 

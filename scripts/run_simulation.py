@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from hidden_narrowing import baseline, data_mind, features, ideology
+from hidden_narrowing import baseline, data_mind, features
 from hidden_narrowing.config import FIXTURES_DIR, RESULTS_DIR
 from hidden_narrowing.simulation import run_repeated_rounds
 
@@ -30,10 +30,13 @@ def main() -> None:
     parser.add_argument("--sample", action="store_true")
     parser.add_argument("--mind-train-dir", type=Path)
     parser.add_argument("--mind-dev-dir", type=Path)
-    parser.add_argument("--allsides-path", type=Path, default=FIXTURES_DIR / "allsides_media_bias.csv")
+    parser.add_argument("--slice", choices=["public_affairs", "all"], default="public_affairs")
+    parser.add_argument("--include-newscrime", action="store_true")
     parser.add_argument("--rounds", type=int, default=5)
     parser.add_argument("--temperature", type=float, default=0.5)
     args = parser.parse_args()
+
+    effective_slice = "all" if args.sample and args.slice == "public_affairs" else args.slice
 
     if args.sample:
         train_news = FIXTURES_DIR / "news.tsv"
@@ -46,13 +49,10 @@ def main() -> None:
         train_news, train_beh = _validate_dir(args.mind_train_dir)
         dev_news, dev_beh = _validate_dir(args.mind_dev_dir)
 
-    train = data_mind.parse_mind(str(train_news), str(train_beh))
-    dev = data_mind.parse_mind(str(dev_news), str(dev_beh))
-    allsides = ideology.load_allsides(str(args.allsides_path))
-    train_news_rows, _ = ideology.attach_ideology(train.news, allsides)
-    dev_news_rows, _ = ideology.attach_ideology(dev.news, allsides)
+    train = data_mind.parse_mind(str(train_news), str(train_beh), slice_name=effective_slice, include_newscrime=args.include_newscrime)
+    dev = data_mind.parse_mind(str(dev_news), str(dev_beh), slice_name=effective_slice, include_newscrime=args.include_newscrime)
 
-    merged_news = {n["NewsID"]: n for n in train_news_rows + dev_news_rows}
+    merged_news = {n["NewsID"]: n for n in train.news + dev.news}
     _, article_vectors = features.build_tfidf_features(list(merged_news.values()))
     histories_by_user = {}
     for h in train.histories:

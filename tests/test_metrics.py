@@ -1,11 +1,12 @@
 import pytest
 
 from hidden_narrowing.metrics import (
-    ideological_concentration,
-    intra_list_diversity,
+    cross_topic_rate,
+    history_congruent_share,
     mrr,
     ndcg_at_k,
-    source_coverage,
+    topical_concentration,
+    topical_entropy,
 )
 
 
@@ -16,17 +17,17 @@ def test_ndcg_and_mrr():
     assert mrr(labels, scores) == pytest.approx(1.0)
 
 
-def test_ideological_concentration():
-    ideologies = [-1.0, 0.0, 1.0]
-    assert ideological_concentration(ideologies) == pytest.approx(0.0)
+def test_topical_concentration():
+    subcats = ["newsus", "newsus", "newsworld", "newsopinion"]
+    assert topical_concentration(subcats) == pytest.approx(0.5)
 
 
-def test_intra_list_diversity():
-    ideologies = [-1.0, 0.0, 1.0]
-    # pairwise distances: 1,2,1 => mean 4/3
-    assert intra_list_diversity(ideologies) == pytest.approx(4 / 3)
+def test_topical_entropy():
+    subcats = ["newsus", "newspolitics", "newsworld", "newsopinion"]
+    assert topical_entropy(subcats, support_size=4) == pytest.approx(1.0)
 
 
-def test_source_coverage():
-    domains = ["a.com", "b.com", "a.com", "c.com"]
-    assert source_coverage(domains) == pytest.approx(0.75)
+def test_cross_topic_and_history_congruent_share():
+    subcats = ["newsus", "newsworld", "newsus", "newspolitics"]
+    assert cross_topic_rate(subcats, "newsus") == pytest.approx(0.5)
+    assert history_congruent_share(subcats, "newsus") == pytest.approx(0.5)

@@ -37,18 +37,18 @@ def make_plots(results_dir: Path, figures_dir: Path) -> list[Path]:
             "utility_tradeoff.png",
             "simulation_concentration_over_rounds.png",
             "simulation_diversity_over_rounds.png",
-            "source_coverage_comparison.png",
+            "subcategory_coverage_comparison.png",
         ]:
             p = figures_dir / fname
             _fallback_png(p)
             out.append(p)
         return out
 
-    exposure_metrics = ["ideological_concentration", "intra_list_diversity", "cross_cutting_exposure_rate", "source_coverage"]
+    exposure_metrics = ["topical_concentration", "topical_entropy", "semantic_diversity", "cross_topic_rate", "history_congruent_share"]
     conds = sorted({r["condition"] for r in summary if r["metric"] in exposure_metrics})
     x = range(len(exposure_metrics))
     width = 0.35
-    plt.figure(figsize=(8, 4))
+    plt.figure(figsize=(9, 4))
     for i, c in enumerate(conds):
         vals = []
         for m in exposure_metrics:
@@ -66,7 +66,7 @@ def make_plots(results_dir: Path, figures_dir: Path) -> list[Path]:
 
     plt.figure(figsize=(5, 4))
     for c in conds:
-        xval = next((float(r["mean"]) for r in summary if r["condition"] == c and r["metric"] == "ndcg@10"), 0.0)
+        xval = next((float(r["mean"]) for r in summary if r["condition"] == c and r["metric"] == "ndcg_10"), 0.0)
         yval = next((float(r["mean"]) for r in summary if r["condition"] == c and r["metric"] == "mrr"), 0.0)
         plt.scatter([xval], [yval], label=c)
         plt.text(xval, yval, c)
@@ -79,8 +79,8 @@ def make_plots(results_dir: Path, figures_dir: Path) -> list[Path]:
     out.append(p)
 
     for metric, fname in [
-        ("concentration", "simulation_concentration_over_rounds.png"),
-        ("diversity", "simulation_diversity_over_rounds.png"),
+        ("topical_concentration", "simulation_concentration_over_rounds.png"),
+        ("semantic_diversity", "simulation_diversity_over_rounds.png"),
     ]:
         plt.figure(figsize=(6, 4))
         by_cond_round: dict[str, dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
@@ -100,7 +100,7 @@ def make_plots(results_dir: Path, figures_dir: Path) -> list[Path]:
         out.append(p)
 
     plt.figure(figsize=(5, 4))
-    metric = "source_coverage"
+    metric = "subcategory_coverage"
     vals = []
     labels = []
     for c in conds:
@@ -108,10 +108,10 @@ def make_plots(results_dir: Path, figures_dir: Path) -> list[Path]:
         labels.append(c)
         vals.append(float(row["mean"]) if row else 0.0)
     plt.bar(labels, vals)
-    plt.ylabel("Source coverage")
+    plt.ylabel("Subcategory coverage")
     plt.xticks(rotation=20, ha="right")
     plt.tight_layout()
-    p = figures_dir / "source_coverage_comparison.png"
+    p = figures_dir / "subcategory_coverage_comparison.png"
     plt.savefig(p, dpi=300)
     plt.close()
     out.append(p)

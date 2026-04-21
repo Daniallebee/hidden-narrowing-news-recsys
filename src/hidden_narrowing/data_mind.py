@@ -16,6 +16,8 @@ NEWS_COLUMNS = [
 ]
 BEHAVIOR_COLUMNS = ["ImpressionID", "UserID", "Time", "History", "Impressions"]
 
+PUBLIC_AFFAIRS_SUBCATEGORIES = {"newsus", "newspolitics", "newsworld", "newsopinion"}
+
 
 @dataclass
 class ParsedMindData:
@@ -101,9 +103,43 @@ def build_histories_rows(behaviors: list[dict]) -> list[dict]:
     return rows
 
 
-def parse_mind(news_path: str, behaviors_path: str) -> ParsedMindData:
+def filter_by_slice(parsed: ParsedMindData, slice_name: str = "public_affairs", include_newscrime: bool = False) -> ParsedMindData:
+    if slice_name == "all":
+        return parsed
+    if slice_name != "public_affairs":
+        raise ValueError(f"Unknown slice '{slice_name}'. Supported: public_affairs, all")
+
+    subcats = set(PUBLIC_AFFAIRS_SUBCATEGORIES)
+    if include_newscrime:
+        subcats.add("newscrime")
+
+    filtered_news = [
+        n
+        for n in parsed.news
+        if n.get("Category", "").strip().lower() == "news" and n.get("SubCategory", "").strip().lower() in subcats
+    ]
+    keep_ids = {n["NewsID"] for n in filtered_news}
+
+    filtered_impressions = [r for r in parsed.impressions if r.get("NewsID") in keep_ids]
+    filtered_histories = [r for r in parsed.histories if r.get("NewsID") in keep_ids]
+    keep_users = {r["UserID"] for r in filtered_impressions if r.get("UserID")}
+    filtered_behaviors = [r for r in parsed.behaviors if r.get("UserID") in keep_users]
+
+    return ParsedMindData(
+        news=filtered_news,
+        behaviors=filtered_behaviors,
+        impressions=filtered_impressions,
+        histories=filtered_histories,
+    )
+
+
+def parse_mind(news_path: str, behaviors_path: str, slice_name: str = "all", include_newscrime: bool = False) -> ParsedMindData:
     news = parse_news(news_path)
     behaviors = parse_behaviors(behaviors_path)
-    impressions = build_impressions_rows(behaviors)
-    histories = build_histories_rows(behaviors)
-    return ParsedMindData(news=news, behaviors=behaviors, impressions=impressions, histories=histories)
+    parsed = ParsedMindData(
+        news=news,
+        behaviors=behaviors,
+        impressions=build_impressions_rows(behaviors),
+        histories=build_histories_rows(behaviors),
+    )
+    return filter_by_slice(parsed, slice_name=slice_name, include_newscrime=include_newscrime)

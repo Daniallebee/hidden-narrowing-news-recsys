@@ -57,9 +57,20 @@ def test_missing_real_data_directory_message():
     assert "Missing MINDsmall files" in combined
 
 
-def test_mapping_template_exists():
+def test_run_all_real_data_args_with_slice_public_affairs():
     root = Path(__file__).resolve().parents[1]
-    template = root / "data" / "external" / "allsides_media_bias_template.csv"
-    assert template.exists()
-    lines = template.read_text(encoding="utf-8").splitlines()
-    assert lines[0].strip() == "outlet,domain,bias_label,bias_score"
+    fixture_dir = root / "tests" / "fixtures"
+    cmd = [
+        sys.executable,
+        str(root / "scripts" / "run_all.py"),
+        "--mind-train-dir",
+        str(fixture_dir),
+        "--mind-dev-dir",
+        str(fixture_dir),
+        "--slice",
+        "public_affairs",
+        "--bootstrap-samples",
+        "50",
+    ]
+    subprocess.run(cmd, check=True)
+    assert (root / "results" / "static_metrics_summary.csv").exists()

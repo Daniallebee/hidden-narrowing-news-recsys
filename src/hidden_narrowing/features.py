@@ -31,6 +31,41 @@ def build_tfidf_features(news_rows: list[dict]) -> tuple[dict, dict[str, dict[st
     return {"method": "tfidf", "idf": idf}, vectors
 
 
+def mean_vector(news_ids: list[str], article_vectors: dict[str, dict[str, float]]) -> dict[str, float]:
+    vecs = [article_vectors.get(nid, {}) for nid in news_ids]
+    vecs = [v for v in vecs if v]
+    if not vecs:
+        return {}
+    acc = Counter()
+    for v in vecs:
+        acc.update(v)
+    denom = len(vecs)
+    return {k: val / denom for k, val in acc.items()}
+
+
+def build_user_subcategory_profile(
+    user_history_ids: list[str],
+    news_by_id: dict[str, dict],
+    allowed_subcategories: set[str],
+) -> dict:
+    subcats = [
+        news_by_id.get(nid, {}).get("SubCategory", "").strip().lower()
+        for nid in user_history_ids
+        if news_by_id.get(nid)
+    ]
+    filtered = [s for s in subcats if s in allowed_subcategories]
+    counts = Counter(filtered)
+    total = sum(counts.values())
+    dominant = None
+    if counts:
+        dominant = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+    freq = {k: (v / total if total else 0.0) for k, v in counts.items()}
+    return {
+        "dominant_subcategory": dominant,
+        "subcategory_frequency": freq,
+    }
+
+
 def build_user_vectors(histories_rows: list[dict], article_vectors: dict[str, dict[str, float]]) -> dict[str, dict[str, float]]:
     user_terms: dict[str, list[dict[str, float]]] = defaultdict(list)
     for h in histories_rows:
