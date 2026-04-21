@@ -1,0 +1,100 @@
+name: MINDsmall Domain Audit
+
+on:
+  workflow_dispatch:
+
+jobs:
+  domain-audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      - name: Download MINDsmall
+        id: download
+        run: |
+          set -o pipefail
+          python scripts/download_mindsmall.py | tee /tmp/download_mind.log
+
+      - name: Check data readiness
+        id: data_ready
+        run: |
+          set -o pipefail
+          python scripts/check_data_ready.py | tee /tmp/data_ready.log
+
+      - name: Audit train domains
+        run: python scripts/audit_domains.py --mind-dir data/raw/MINDsmall_train
+
+      - name: Save train audit snapshot
+        run: |
+          cp results/domain_coverage.csv results/domain_coverage_train.csv
+          cp results/unmapped_domains.csv results/unmapped_domains_train.csv
+          cp results/mapping_priority_domains.csv results/mapping_priority_domains_train.csv
+
+      - name: Audit dev domains
+        run: python scripts/audit_domains.py --mind-dir data/raw/MINDsmall_dev
+
+      - name: Save dev audit snapshot
+        run: |
+          cp results/domain_coverage.csv results/domain_coverage_dev.csv
+          cp results/unmapped_domains.csv results/unmapped_domains_dev.csv
+          cp results/mapping_priority_domains.csv results/mapping_priority_domains_dev.csv
+
+      - name: Write markdown summary
+        run: |
+          DOWNLOAD_STATUS="$(tail -n 5 /tmp/download_mind.log | tr '\n' '; ')"
+          DATA_READY_STATUS="$(tail -n 5 /tmp/data_ready.log | tr '\n' '; ')"
+          python scripts/write_domain_audit_summary.py \
+            --download-status "$DOWNLOAD_STATUS" \
+            --data-ready-status "$DATA_READY_STATUS"
+
+      - name: Print git status and verify safety
+        run: |
+          echo "## Git status after download/audit"
+          git status --short
+          if git status --short | awk '{print $2}' | rg -q '^data/raw/'; then
+            echo "Found tracked or staged files under data/raw/; refusing to continue."
+            exit 1
+          fi
+          if git status --short | awk '{print $2}' | rg -q '(news\.tsv|behaviors\.tsv|\.zip$|entity_embedding\.vec|relation_embedding\.vec)'; then
+            echo "Found forbidden raw dataset files in git status output; refusing to continue."
+            exit 1
+          fi
+
+      - name: Stage safe artifact bundle
+        run: |
+          rm -rf artifact_bundle
+          mkdir -p artifact_bundle/reports artifact_bundle/results
+          [ -f reports/domain_audit_summary.md ] && cp reports/domain_audit_summary.md artifact_bundle/reports/
+          [ -f results/domain_coverage.csv ] && cp results/domain_coverage.csv artifact_bundle/results/
+          [ -f results/unmapped_domains.csv ] && cp results/unmapped_domains.csv artifact_bundle/results/
+          for f in results/*mapping*priority*.csv; do
+            [ -f "$f" ] && cp "$f" artifact_bundle/results/
+          done
+          [ -f results/domain_coverage_train.csv ] && cp results/domain_coverage_train.csv artifact_bundle/results/
+          [ -f results/unmapped_domains_train.csv ] && cp results/unmapped_domains_train.csv artifact_bundle/results/
+          [ -f results/mapping_priority_domains_train.csv ] && cp results/mapping_priority_domains_train.csv artifact_bundle/results/
+          [ -f results/domain_coverage_dev.csv ] && cp results/domain_coverage_dev.csv artifact_bundle/results/
+          [ -f results/unmapped_domains_dev.csv ] && cp results/unmapped_domains_dev.csv artifact_bundle/results/
+          [ -f results/mapping_priority_domains_dev.csv ] && cp results/mapping_priority_domains_dev.csv artifact_bundle/results/
+
+      - name: Upload safe domain audit artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mindsmall-domain-audit
+          retention-days: 7
+          path: artifact_bundle/
+          if-no-files-found: error

@@ -57,3 +57,19 @@ python scripts/check_data_ready.py
 - **Do not commit extracted MIND files.**
 - **Do not commit private mapping files.**
 - Keep generated large artifacts out of version control.
+
+## Option B: Run domain audit using GitHub Actions
+
+When local network policy blocks MINDsmall downloads, run the audit on a GitHub-hosted runner.
+
+1. Open the repository on GitHub and go to **Actions**.
+2. Select workflow **MINDsmall Domain Audit**.
+3. Click **Run workflow** and confirm the default branch.
+4. Wait for the run to complete.
+5. Open the run artifacts and download **mindsmall-domain-audit**.
+6. Inspect:
+   - `reports/domain_audit_summary.md`
+   - `results/unmapped_domains.csv`
+7. Use top unmapped/high-volume domains to build `data/external/allsides_media_bias.csv`, then re-run the audit.
+
+This workflow uploads only safe derived audit outputs (aggregate domain-level CSV/Markdown files) and does not upload raw MIND files.

@@ -57,6 +57,7 @@ def main() -> None:
             unmapped_rows.append({"domain": domain, "article_count": count})
 
     _write_csv(RESULTS_DIR / "domain_coverage.csv", coverage_rows, ["domain", "article_count", "is_mapped"])
+    _write_csv(RESULTS_DIR / "mapping_priority_domains.csv", unmapped_rows, ["domain", "article_count"])
     _write_csv(RESULTS_DIR / "unmapped_domains.csv", unmapped_rows, ["domain", "article_count"])
 
     print(f"Total unique domains: {len(domain_counts)}")
