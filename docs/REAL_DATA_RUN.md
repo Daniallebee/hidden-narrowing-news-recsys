@@ -2,61 +2,58 @@
 
 This guide describes how to run the full experiment on real MINDsmall files while keeping the repository safe and reproducible.
 
-## 1) Download MINDsmall
+## 1) Download MINDsmall (one command)
 
-Download the MIND dataset from Microsoft MIND resources (use the **MINDsmall** train and dev splits).
+```bash
+python scripts/download_mindsmall.py
+```
 
-## 2) Place files in the expected structure
+This helper downloads official MINDsmall train/dev zip files and extracts them into:
 
-Create this exact layout:
+- `data/raw/MINDsmall_train/`
+- `data/raw/MINDsmall_dev/`
 
-- `data/raw/MINDsmall_train/news.tsv`
-- `data/raw/MINDsmall_train/behaviors.tsv`
-- `data/raw/MINDsmall_dev/news.tsv`
-- `data/raw/MINDsmall_dev/behaviors.tsv`
+Use `--force` to re-download and re-extract.
 
-## 3) Create outlet-to-bias mapping file
+```bash
+python scripts/download_mindsmall.py --force
+```
 
-Place your mapping at:
-
-- `data/external/allsides_media_bias.csv`
-
-Use `data/external/allsides_media_bias_template.csv` as a schema template.
-
-## 4) Optional domain audit before full run
-
-Audit domain coverage in each split:
+## 2) Optional domain audit before running
 
 ```bash
 python scripts/audit_domains.py --mind-dir data/raw/MINDsmall_train
-python scripts/audit_domains.py --mind-dir data/raw/MINDsmall_dev
 ```
 
-The script writes:
+## 3) Create outlet-to-bias mapping file
 
-- `results/domain_coverage.csv`
-- `results/unmapped_domains.csv`
+Create:
 
-## 5) Run the full real-data experiment
+- `data/external/allsides_media_bias.csv`
 
-```bash
-python scripts/run_all.py --mind-train-dir data/raw/MINDsmall_train --mind-dev-dir data/raw/MINDsmall_dev --bootstrap-samples 1000
-```
+Use `data/external/allsides_media_bias_template.csv` as the schema template.
 
-## 6) Faster debug run
-
-```bash
-python scripts/run_all.py --mind-train-dir data/raw/MINDsmall_train --mind-dev-dir data/raw/MINDsmall_dev --bootstrap-samples 200
-```
-
-You can also reduce workload for quick checks:
+## 4) Fast debug run
 
 ```bash
 python scripts/run_all.py --mind-train-dir data/raw/MINDsmall_train --mind-dev-dir data/raw/MINDsmall_dev --max-train-impressions 2000 --max-dev-impressions 500 --bootstrap-samples 200
 ```
 
+## 5) Fuller run
+
+```bash
+python scripts/run_all.py --mind-train-dir data/raw/MINDsmall_train --mind-dev-dir data/raw/MINDsmall_dev --bootstrap-samples 1000
+```
+
+## Optional readiness check
+
+```bash
+python scripts/check_data_ready.py
+```
+
 ## Safety warning
 
 - **Do not commit raw MIND data.**
+- **Do not commit extracted MIND files.**
 - **Do not commit private mapping files.**
 - Keep generated large artifacts out of version control.
