@@ -61,11 +61,28 @@ def run_experiment(
     bootstrap_samples: int = 1000,
     lambda_values: list[float] | None = None,
     dataset_label: str = "sample",
+    max_train_impressions: int | None = None,
+    max_dev_impressions: int | None = None,
+    max_users: int | None = None,
 ) -> tuple[list[dict], list[dict]]:
     lambda_values = lambda_values or [0.15, 0.35, 0.60]
 
     train = data_mind.parse_mind(str(train_news_path), str(train_behaviors_path))
     dev = data_mind.parse_mind(str(dev_news_path), str(dev_behaviors_path))
+
+    if max_users is not None and max_users > 0:
+        keep_users = {r["UserID"] for r in train.behaviors[:max_users] if r.get("UserID")}
+        train.behaviors = [r for r in train.behaviors if r.get("UserID") in keep_users]
+        train.impressions = [r for r in train.impressions if r.get("UserID") in keep_users]
+        train.histories = [r for r in train.histories if r.get("UserID") in keep_users]
+        dev.behaviors = [r for r in dev.behaviors if r.get("UserID") in keep_users]
+        dev.impressions = [r for r in dev.impressions if r.get("UserID") in keep_users]
+        dev.histories = [r for r in dev.histories if r.get("UserID") in keep_users]
+
+    if max_train_impressions is not None and max_train_impressions > 0:
+        train.impressions = train.impressions[:max_train_impressions]
+    if max_dev_impressions is not None and max_dev_impressions > 0:
+        dev.impressions = dev.impressions[:max_dev_impressions]
 
     allsides_rows = ideology.load_allsides(str(allsides_path))
     train_news_rows, mapping_report_train = ideology.attach_ideology(train.news, allsides_rows)
@@ -117,6 +134,7 @@ def run_experiment(
     ]
 
     static_rows: list[dict] = []
+    topk_ideology_values: list[float | None] = []
     for imp_id, group in imps_by_id.items():
         user_id = group[0]["UserID"]
         user_hist = histories_by_user_train.get(user_id, [])
@@ -155,6 +173,7 @@ def run_experiment(
             scores = [float(r.get(score_col, 0.0)) for r in frame]
             ideos = [r.get("ideology_score") for r in frame]
             domains = [r.get("domain") for r in frame]
+            topk_ideology_values.extend(ideos)
             static_rows.append(
                 {
                     "ImpressionID": imp_id,
@@ -201,12 +220,41 @@ def run_experiment(
     _write_csv(results_dir / "static_metrics_summary.csv", summary_rows)
 
     reports_dir.mkdir(parents=True, exist_ok=True)
+    warning_lines: list[str] = []
+    if mapping_report_dev.coverage < 0.20:
+        warning_lines.append(
+            f"Ideology mapping coverage is low ({mapping_report_dev.coverage:.2%}); estimates may be unstable."
+        )
+    if dataset_label != "sample":
+        valid_impressions = len({r["ImpressionID"] for r in static_rows})
+        if valid_impressions < 100:
+            warning_lines.append(
+                f"Only {valid_impressions} valid evaluation impressions were scored; results may be underpowered."
+            )
+    cc_values = [float(r["cross_cutting_exposure_rate"]) for r in static_rows if r.get("cross_cutting_exposure_rate") is not None]
+    if cc_values and sum(1 for x in cc_values if x > 0.0) < 10:
+        warning_lines.append(
+            "Cross-cutting exposure could be computed for very few users/impressions."
+        )
+    if topk_ideology_values:
+        unmapped_ratio = sum(1 for x in topk_ideology_values if x is None) / len(topk_ideology_values)
+    else:
+        unmapped_ratio = 1.0
+    if unmapped_ratio > 0.80:
+        warning_lines.append(
+            f"Top-k lists contain many unmapped ideology values ({unmapped_ratio:.1%} unmapped)."
+        )
+
     report_lines = [
         "# Results Summary",
         "",
         f"Dataset: **{dataset_label}**",
         "",
-        "**Important:** This run is synthetic validation only, not real-world findings." if dataset_label == "sample" else "This run uses MINDsmall inputs.",
+        (
+            "These outputs validate the pipeline only and should not be interpreted as research findings."
+            if dataset_label == "sample"
+            else "These outputs are generated from MIND-style evaluation data and may be used for analysis subject to the stated limitations."
+        ),
         "",
         "## Methodology",
         f"- Baseline model: {model.mode} (LogisticRegression(max_iter=1000, class_weight='balanced') with cosine fallback).",
@@ -234,6 +282,8 @@ def run_experiment(
         "- Sentence-transformer mode is optional and environment-dependent.",
         "- Offline click simulation may not reflect live user adaptation.",
     ]
+    if warning_lines:
+        report_lines += ["", "## Warnings"] + [f"- {w}" for w in warning_lines]
     (reports_dir / "results_summary.md").write_text("\n".join(report_lines), encoding="utf-8")
 
     return static_rows, summary_rows

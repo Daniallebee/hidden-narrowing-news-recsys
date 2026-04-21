@@ -2,7 +2,7 @@
 
 Dataset: **sample**
 
-**Important:** This run is synthetic validation only, not real-world findings.
+These outputs validate the pipeline only and should not be interpreted as research findings.
 
 ## Methodology
 - Baseline model: cosine (LogisticRegression(max_iter=1000, class_weight='balanced') with cosine fallback).
@@ -46,6 +46,9 @@ Dataset: **sample**
 - Ideology scores depend on outlet-domain mapping coverage.
 - Sentence-transformer mode is optional and environment-dependent.
 - Offline click simulation may not reflect live user adaptation.
+
+## Warnings
+- Cross-cutting exposure could be computed for very few users/impressions.
 ## Simulation Summary
 
 | condition | concentration_mean | diversity_mean | cross_cutting_rate_mean | source_coverage_mean |
